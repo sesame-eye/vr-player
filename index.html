@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>360 VR Player</title>
 
-<!-- ★ iOS用 ホーム画面追加時の全画面化設定 -->
+<!-- iOS用 ホーム画面追加時の全画面化設定 -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="360 VR Player">
 
-<!-- ★ Android (Chrome) 用 全画面化設定 -->
+<!-- Android (Chrome) 用 全画面化設定 -->
 <meta name="mobile-web-app-capable" content="yes">
 
 <style>
@@ -29,6 +29,15 @@
     position:absolute; bottom:20px; right:20px; z-index:999;
     display:none;
   }
+  /* 操作インジケーター表示用 */
+  #action-indicator {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1000; color: #fff; background: rgba(0,0,0,0.6);
+    padding: 16px 28px; border-radius: 12px; font-size: 24px;
+    font-weight: bold; font-family: sans-serif;
+    pointer-events: none; opacity: 0; transition: opacity 0.2s ease;
+  }
   canvas { display:block; }
 </style>
 </head>
@@ -40,6 +49,7 @@
 </div>
 
 <button id="vr-toggle-btn">VR(2画面)切替</button>
+<div id="action-indicator"></div>
 
 <video id="video-src" playsinline webkit-playsinline loop muted
   style="position:absolute; width:1px; height:1px; opacity:0.01; pointer-events:none;"></video>
@@ -53,6 +63,7 @@ const playBtn = document.getElementById('play-btn');
 const vrToggleBtn = document.getElementById('vr-toggle-btn');
 const video = document.getElementById('video-src');
 const uiContainer = document.getElementById('ui-container');
+const actionIndicator = document.getElementById('action-indicator');
 
 let scene, camera, renderer, stereoEffect, deviceControls;
 let isStereoMode = false;
@@ -64,6 +75,19 @@ let isPointerDown = false, pointerX = 0, pointerY = 0, lonStart = 0, latStart = 
 
 let normalFov = 75;
 let stereoFov = 95;
+
+// タップ・長押し（ポインター操作）制御用の変数
+let pressTimer = null;
+let longPressTriggered = false;
+let startX = 0, startY = 0;
+
+function showIndicator(text) {
+  actionIndicator.textContent = text;
+  actionIndicator.style.opacity = '1';
+  setTimeout(() => {
+    actionIndicator.style.opacity = '0';
+  }, 800);
+}
 
 function initScene() {
   scene = new THREE.Scene();
@@ -89,17 +113,18 @@ function initScene() {
   const material = new THREE.MeshBasicMaterial({ map: videoTexture });
   const sphere = new THREE.Mesh(geometry, material);
   
-  // 動画の正面位置を合わせるためY軸を90度回転
   sphere.rotation.y = Math.PI / 2;
-  
   scene.add(sphere);
 
   deviceControls = new THREE.DeviceOrientationControls(camera);
 
   window.addEventListener('resize', onResize);
+  
+  // ポインターイベントの登録（タップ・一時停止・長押し10秒スキップ）
   renderer.domElement.addEventListener('pointerdown', onPointerDown);
   renderer.domElement.addEventListener('pointermove', onPointerMove);
   renderer.domElement.addEventListener('pointerup', onPointerUp);
+  renderer.domElement.addEventListener('pointercancel', onPointerUp);
 
   vrToggleBtn.style.display = 'block';
   vrToggleBtn.addEventListener('click', toggleStereo);
@@ -107,9 +132,9 @@ function initScene() {
   animate();
 }
 
-function toggleStereo() {
+function toggleStereo(e) {
+  if (e) e.stopPropagation(); // キャンバス上のタップイベント伝播を防止
   isStereoMode = !isStereoMode;
-  vrToggleBtn.textContent = isStereoMode ? '通常表示に戻す' : 'VR(2画面)切替';
 
   camera.fov = isStereoMode ? stereoFov : normalFov;
   camera.updateProjectionMatrix();
@@ -138,17 +163,64 @@ function onResize() {
 }
 
 function onPointerDown(e) {
-  if (deviceOrientationEnabled) return;
   isPointerDown = true;
   pointerX = e.clientX; pointerY = e.clientY;
+  startX = e.clientX; startY = e.clientY;
   lonStart = lon; latStart = lat;
+
+  longPressTriggered = false;
+
+  // 0.5秒間押し続けたら「10秒スキップ」を実行
+  pressTimer = setTimeout(() => {
+    if (isPointerDown) {
+      longPressTriggered = true;
+      if (video && !isNaN(video.duration)) {
+        video.currentTime = Math.min(video.duration, video.currentTime + 10);
+        showIndicator('⏩ +10秒');
+      }
+    }
+  }, 500);
 }
+
 function onPointerMove(e) {
-  if (!isPointerDown || deviceOrientationEnabled) return;
-  lon = (pointerX - e.clientX) * 0.1 + lonStart;
-  lat = (e.clientY - pointerY) * 0.1 + latStart;
+  if (!isPointerDown) return;
+
+  // 移動距離を算出
+  const diffX = Math.abs(e.clientX - startX);
+  const diffY = Math.abs(e.clientY - startY);
+
+  // 指が一定（10px）以上動いたら「視点移動操作」とみなし長押し判定をキャンセル
+  if (diffX > 10 || diffY > 10) {
+    clearTimeout(pressTimer);
+  }
+
+  if (!deviceOrientationEnabled) {
+    lon = (pointerX - e.clientX) * 0.1 + lonStart;
+    lat = (e.clientY - pointerY) * 0.1 + latStart;
+  }
 }
-function onPointerUp() { isPointerDown = false; }
+
+function onPointerUp(e) {
+  isPointerDown = false;
+  clearTimeout(pressTimer);
+
+  // 長押しが動いていなかった場合＝短くタップされた時は「一時停止 / 再生」の切り替え
+  if (!longPressTriggered) {
+    const diffX = Math.abs((e ? e.clientX : startX) - startX);
+    const diffY = Math.abs((e ? e.clientY : startY) - startY);
+
+    // ドラッグ移動ではなくタップの場合のみ実行
+    if (diffX <= 10 && diffY <= 10) {
+      if (video.paused) {
+        video.play();
+        showIndicator('▶ 再生');
+      } else {
+        video.pause();
+        showIndicator('⏸ 一時停止');
+      }
+    }
+  }
+}
 
 function animate() {
   requestAnimationFrame(animate);
