@@ -41,7 +41,7 @@
   <button id="fov-plus">＋ 狭く</button>
 </div>
 
-<video id="video-src" playsinline webkit-playsinline loop muted
+<video id="video-src" loop playsinline webkit-playsinline muted
   style="position:absolute; width:1px; height:1px; opacity:0.01; pointer-events:none;"></video>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
@@ -61,12 +61,28 @@ let scene, camera, renderer, stereoEffect, deviceControls;
 let isStereoMode = false;
 let deviceOrientationEnabled = false;
 
-// タッチドラッグ用(ジャイロ許可が得られない場合のフォールバック)
+// タッチドラッグ用(ジャイロが使えない場合のフォールバック)
 let lon = 0, lat = 0;
 let isPointerDown = false, pointerX = 0, pointerY = 0, lonStart = 0, latStart = 0;
 
 let normalFov = 75;
 let stereoFov = 95;
+
+// ★ Service Worker(継ぎはぎ映像対策)
+let swReady = false;
+async function initServiceWorker() {
+  if (!('serviceWorker' in navigator)) return false;
+  try {
+    await navigator.serviceWorker.register('sw.js');
+    await navigator.serviceWorker.ready;
+    swReady = true;
+    return true;
+  } catch (err) {
+    console.warn('Service Worker登録失敗:', err);
+    return false;
+  }
+}
+initServiceWorker();
 
 function initScene() {
   scene = new THREE.Scene();
@@ -88,12 +104,12 @@ function initScene() {
   videoTexture.minFilter = THREE.LinearFilter;
   videoTexture.magFilter = THREE.LinearFilter;
   videoTexture.format = THREE.RGBFormat;
+  videoTexture.generateMipmaps = false; // ★ iOSでのテクスチャ崩れ対策
 
   const material = new THREE.MeshBasicMaterial({ map: videoTexture });
   const sphere = new THREE.Mesh(geometry, material);
   scene.add(sphere);
 
-  // ★ three.js公式のDeviceOrientationControlsを使用
   deviceControls = new THREE.DeviceOrientationControls(camera);
 
   window.addEventListener('resize', onResize);
@@ -166,7 +182,7 @@ function animate() {
   requestAnimationFrame(animate);
 
   if (deviceOrientationEnabled && deviceControls) {
-    deviceControls.update(); // ★ ジャイロによる視点更新(向き補正込み)
+    deviceControls.update();
   } else {
     lat = Math.max(-85, Math.min(85, lat));
     const phi = THREE.MathUtils.degToRad(90 - lat);
@@ -187,7 +203,16 @@ function animate() {
 fileInput.addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
-  video.src = URL.createObjectURL(file);
+
+  if (swReady && navigator.serviceWorker.controller) {
+    // ★ Service Worker経由でRange配信させる(継ぎはぎ対策)
+    navigator.serviceWorker.controller.postMessage({ type: 'SET_VIDEO_FILE', file });
+    video.src = '/__local_video__?t=' + Date.now();
+  } else {
+    // Service Worker非対応環境へのフォールバック
+    video.src = URL.createObjectURL(file);
+  }
+
   video.load();
   playBtn.disabled = false;
   playBtn.textContent = 'タップして再生';
@@ -199,8 +224,6 @@ playBtn.addEventListener('click', async () => {
     video.play().then(() => {
       uiContainer.style.display = 'none';
       if (!scene) initScene();
-
-      // ★ iOS13+: シーン初期化後にジャイロ許可をリクエスト
       requestGyroPermission();
     }).catch(err => alert('再生エラー: ' + err.message));
   };
@@ -214,14 +237,13 @@ async function requestGyroPermission() {
     try {
       const res = await DeviceOrientationEvent.requestPermission();
       if (res === 'granted') {
-        deviceControls.connect(); // ライブラリ内部でイベント登録される
+        deviceControls.connect();
         deviceOrientationEnabled = true;
       }
     } catch (err) {
       console.warn('orientation permission error', err);
     }
   } else {
-    // Android等、許可リクエストが不要な環境
     deviceControls.connect();
     deviceOrientationEnabled = true;
   }
