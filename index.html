@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>360 VR Player</title>
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+  <style>
+    body { margin: 0; overflow: hidden; background: #000; }
+    #file-input {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      z-index: 999;
+      background: rgba(255,255,255,0.8);
+      padding: 10px;
+      border-radius: 8px;
+      font-family: sans-serif;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="file-input">
+    <input type="file" id="video-file" accept="video/mp4,video/*">
+  </div>
+
+  <a-scene embedded vr-mode-ui="enabled: true">
+    <a-assets>
+      <video id="video-src" crossorigin="anonymous" loop playsinline webkit-playsinline></video>
+    </a-assets>
+    <a-videosphere src="#video-src" rotation="0 -90 0"></a-videosphere>
+    <a-camera look-controls="magicWindowTrackingEnabled: true"></a-camera>
+  </a-scene>
+
+  <script>
+    const fileInput = document.getElementById('video-file');
+    const video = document.getElementById('video-src');
+
+    fileInput.addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const fileURL = URL.createObjectURL(file);
+      video.src = fileURL;
+      video.play();
+      
+      // 選択UIを非表示にする場合は以下を有効化
+      // document.getElementById('file-input').style.display = 'none';
+    });
+  </script>
+</body>
+</html>
