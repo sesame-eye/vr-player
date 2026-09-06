@@ -20,6 +20,11 @@
     position:absolute; bottom:20px; right:20px; z-index:999;
     display:none;
   }
+  #fov-controls {
+    position:absolute; bottom:20px; left:20px; z-index:999;
+    display:none; gap:8px;
+  }
+  #fov-controls button { padding:8px 12px; font-size:18px; }
   canvas { display:block; }
 </style>
 </head>
@@ -31,6 +36,10 @@
 </div>
 
 <button id="vr-toggle-btn">VR(2画面)切替</button>
+<div id="fov-controls">
+  <button id="fov-minus">－ 広く</button>
+  <button id="fov-plus">＋ 狭く</button>
+</div>
 
 <!-- display:none にはしない。視覚的に見えないだけの状態にする -->
 <video id="video-src" playsinline webkit-playsinline loop muted
@@ -42,6 +51,9 @@
 const fileInput = document.getElementById('video-file');
 const playBtn = document.getElementById('play-btn');
 const vrToggleBtn = document.getElementById('vr-toggle-btn');
+const fovControls = document.getElementById('fov-controls');
+const fovMinusBtn = document.getElementById('fov-minus');
+const fovPlusBtn = document.getElementById('fov-plus');
 const video = document.getElementById('video-src');
 const uiContainer = document.getElementById('ui-container');
 
@@ -51,9 +63,13 @@ let lon = 0, lat = 0;
 let isPointerDown = false, pointerX = 0, pointerY = 0, lonStart = 0, latStart = 0;
 let deviceOrientationEnabled = false;
 
+// 通常表示とVR表示でそれぞれ別のFOVを保持
+let normalFov = 75;
+let stereoFov = 95; // ★ カードボード等のレンズは広角前提。まずはここを調整
+
 function initScene() {
   scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1100);
+  camera = new THREE.PerspectiveCamera(normalFov, window.innerWidth / window.innerHeight, 0.1, 1100);
 
   renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -62,7 +78,7 @@ function initScene() {
 
   stereoEffect = new THREE.StereoEffect(renderer);
   stereoEffect.setSize(window.innerWidth, window.innerHeight);
-  stereoEffect.eyeSeparation = 0.008; // 眼幅(球体半径500に対して調整)
+  stereoEffect.eyeSeparation = 0.008; // 眼幅(球体半径500に対する比率)
 
   const geometry = new THREE.SphereGeometry(500, 60, 40);
   geometry.scale(-1, 1, 1); // 球の内側からテクスチャを見せる
@@ -84,14 +100,29 @@ function initScene() {
   vrToggleBtn.style.display = 'block';
   vrToggleBtn.addEventListener('click', toggleStereo);
 
+  fovMinusBtn.addEventListener('click', () => adjustFov(-5));
+  fovPlusBtn.addEventListener('click', () => adjustFov(5));
+
   animate();
+}
+
+function adjustFov(delta) {
+  stereoFov = Math.max(50, Math.min(120, stereoFov + delta));
+  if (isStereoMode) {
+    camera.fov = stereoFov;
+    camera.updateProjectionMatrix();
+  }
 }
 
 function toggleStereo() {
   isStereoMode = !isStereoMode;
   vrToggleBtn.textContent = isStereoMode ? '通常表示に戻す' : 'VR(2画面)切替';
+  fovControls.style.display = isStereoMode ? 'flex' : 'none';
 
-  // 横向き推奨。可能なら画面を横向きに固定＆フルスクリーン化
+  // ★ ステレオ(カードボード)表示時はFOVを広げる
+  camera.fov = isStereoMode ? stereoFov : normalFov;
+  camera.updateProjectionMatrix();
+
   if (isStereoMode) {
     if (document.documentElement.requestFullscreen) {
       document.documentElement.requestFullscreen().catch(() => {});
@@ -104,6 +135,9 @@ function toggleStereo() {
       document.exitFullscreen().catch(() => {});
     }
   }
+
+  // フルスクリーン/画面回転の反映を待ってからリサイズを強制実行
+  setTimeout(onResize, 300);
 }
 
 function onResize() {
