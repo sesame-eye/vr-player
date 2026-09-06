@@ -172,36 +172,39 @@ fileInput.addEventListener('change', (e) => {
   playBtn.textContent = 'タップして再生';
 });
 
-playBtn.addEventListener('click', async () => {
+// ★タップイベントの直後（同期タイミング）でジャイロ許可をリクエストするよう修正
+playBtn.addEventListener('click', () => {
+  // 1. タップ直後にジャイロ許可を申請
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    DeviceOrientationEvent.requestPermission().then(res => {
+      if (res === 'granted') {
+        if (deviceControls) deviceControls.connect();
+        deviceOrientationEnabled = true;
+      }
+    }).catch(console.warn);
+  }
+
+  // 2. 動画再生とシーン構築
   video.muted = false;
   const start = () => {
     video.play().then(() => {
       uiContainer.style.display = 'none';
-      if (!scene) initScene();
-      requestGyroPermission();
+      if (!scene) {
+        initScene();
+        // Androidなど許可要求が不要な環境用の接続処理
+        if (typeof DeviceOrientationEvent === 'undefined' ||
+            typeof DeviceOrientationEvent.requestPermission !== 'function') {
+          deviceControls.connect();
+          deviceOrientationEnabled = true;
+        }
+      }
     }).catch(err => alert('再生エラー: ' + err.message));
   };
+
   if (video.readyState >= 2) start();
   else video.addEventListener('loadeddata', start, { once: true });
 });
-
-async function requestGyroPermission() {
-  if (typeof DeviceOrientationEvent !== 'undefined' &&
-      typeof DeviceOrientationEvent.requestPermission === 'function') {
-    try {
-      const res = await DeviceOrientationEvent.requestPermission();
-      if (res === 'granted') {
-        deviceControls.connect();
-        deviceOrientationEnabled = true;
-      }
-    } catch (err) {
-      console.warn('orientation permission error', err);
-    }
-  } else {
-    deviceControls.connect();
-    deviceOrientationEnabled = true;
-  }
-}
 </script>
 </body>
 </html>
