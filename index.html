@@ -95,7 +95,7 @@ function initScene() {
 
   stereoEffect = new THREE.StereoEffect(renderer);
   stereoEffect.setSize(window.innerWidth, window.innerHeight);
-  stereoEffect.eyeSeparation = 0.008;
+  stereoEffect.eyeSeparation = 0;
 
   const geometry = new THREE.SphereGeometry(500, 128, 128);
   geometry.scale(-1, 1, 1);
