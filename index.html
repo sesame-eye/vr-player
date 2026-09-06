@@ -2,10 +2,19 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>360 VR Player</title>
+
+<!-- ★ iOS用 ホーム画面追加時の全画面化設定 -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="360 VR Player">
+
+<!-- ★ Android (Chrome) 用 全画面化設定 -->
+<meta name="mobile-web-app-capable" content="yes">
+
 <style>
-  html, body { margin:0; padding:0; overflow:hidden; background:#000; height:100%; }
+  html, body { margin:0; padding:0; overflow:hidden; background:#000; height:100%; width:100%; }
   #ui-container {
     position:absolute; top:20px; left:20px; z-index:999;
     background:rgba(255,255,255,0.9); padding:12px; border-radius:8px;
@@ -172,9 +181,7 @@ fileInput.addEventListener('change', (e) => {
   playBtn.textContent = 'タップして再生';
 });
 
-// ★タップイベントの直後（同期タイミング）でジャイロ許可をリクエストするよう修正
 playBtn.addEventListener('click', () => {
-  // 1. タップ直後にジャイロ許可を申請
   if (typeof DeviceOrientationEvent !== 'undefined' &&
       typeof DeviceOrientationEvent.requestPermission === 'function') {
     DeviceOrientationEvent.requestPermission().then(res => {
@@ -185,14 +192,12 @@ playBtn.addEventListener('click', () => {
     }).catch(console.warn);
   }
 
-  // 2. 動画再生とシーン構築
   video.muted = false;
   const start = () => {
     video.play().then(() => {
       uiContainer.style.display = 'none';
       if (!scene) {
         initScene();
-        // Androidなど許可要求が不要な環境用の接続処理
         if (typeof DeviceOrientationEvent === 'undefined' ||
             typeof DeviceOrientationEvent.requestPermission !== 'function') {
           deviceControls.connect();
