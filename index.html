@@ -7,6 +7,7 @@
   <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
   <style>
     body { margin: 0; overflow: hidden; background: #000; }
+
     #ui-container {
       position: absolute;
       top: 20px;
@@ -31,19 +32,30 @@
       cursor: pointer;
     }
     button:disabled { background: #ccc; }
+
+    /* iOS Safari対策: display:none にすると動画がテクスチャに描画されない。
+       視覚的には見えないが、レイアウト上は存在する状態にする */
+    #video-src {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 1px;
+      height: 1px;
+      opacity: 0.01;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
-
   <div id="ui-container">
     <input type="file" id="video-file" accept="video/mp4,video/*">
     <button id="play-btn" disabled>再生開始</button>
   </div>
 
+  <!-- ★ a-assets の外、body直下に配置(iOS Safari対策) -->
+  <video id="video-src" loop playsinline webkit-playsinline muted></video>
+
   <a-scene embedded vr-mode-ui="enabled: true">
-    <a-assets>
-      <video id="video-src" loop playsinline webkit-playsinline muted></video>
-    </a-assets>
     <a-videosphere id="sphere" src="#video-src" rotation="0 -90 0"></a-videosphere>
     <a-camera look-controls="magicWindowTrackingEnabled: true"></a-camera>
   </a-scene>
@@ -52,7 +64,6 @@
     const fileInput = document.getElementById('video-file');
     const playBtn = document.getElementById('play-btn');
     const video = document.getElementById('video-src');
-    const sphere = document.getElementById('sphere');
     const uiContainer = document.getElementById('ui-container');
 
     fileInput.addEventListener('change', function(e) {
@@ -62,33 +73,29 @@
       const fileURL = URL.createObjectURL(file);
       video.src = fileURL;
       video.load();
+
       playBtn.disabled = false;
       playBtn.textContent = 'タップして再生';
     });
 
     playBtn.addEventListener('click', function() {
-      // ミュート解除して再生
       video.muted = false;
-      video.play().then(() => {
-        uiContainer.style.display = 'none';
-        
-        // iOS Safari向け: 毎フレーム強制的にテクスチャを更新させる処理
-        const scene = document.querySelector('a-scene');
-        scene.addEventListener('render-target-loaded', () => {}, {once: true});
-        
-        function updateTexture() {
-          if (sphere.components.material && sphere.components.material.material.map) {
-            sphere.components.material.material.map.needsUpdate = true;
-          }
-          if (!video.paused && !video.ended) {
-            requestAnimationFrame(updateTexture);
-          }
-        }
-        updateTexture();
+      video.playsInline = true;
 
-      }).catch(err => {
-        alert('再生エラー: ' + err.message);
-      });
+      const startPlayback = () => {
+        video.play().then(() => {
+          uiContainer.style.display = 'none';
+        }).catch(err => {
+          alert('再生エラー: ' + err.message);
+        });
+      };
+
+      // 動画データがまだ読み込まれていない場合は loadeddata を待つ
+      if (video.readyState >= 2) {
+        startPlayback();
+      } else {
+        video.addEventListener('loadeddata', startPlayback, { once: true });
+      }
     });
   </script>
 </body>
