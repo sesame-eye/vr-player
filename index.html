@@ -7,22 +7,37 @@
   <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
   <style>
     body { margin: 0; overflow: hidden; background: #000; }
-    #file-input {
+    #ui-container {
       position: absolute;
       top: 20px;
       left: 20px;
       z-index: 999;
-      background: rgba(255,255,255,0.8);
-      padding: 10px;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 12px;
       border-radius: 8px;
       font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
     }
+    button {
+      padding: 8px 16px;
+      font-size: 14px;
+      font-weight: bold;
+      background: #007aff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:disabled { background: #ccc; }
   </style>
 </head>
 <body>
 
-  <div id="file-input">
+  <div id="ui-container">
     <input type="file" id="video-file" accept="video/mp4,video/*">
+    <button id="play-btn" disabled>再生開始</button>
   </div>
 
   <a-scene embedded vr-mode-ui="enabled: true">
@@ -35,7 +50,9 @@
 
   <script>
     const fileInput = document.getElementById('video-file');
+    const playBtn = document.getElementById('play-btn');
     const video = document.getElementById('video-src');
+    const uiContainer = document.getElementById('ui-container');
 
     fileInput.addEventListener('change', function(e) {
       const file = e.target.files[0];
@@ -43,10 +60,17 @@
 
       const fileURL = URL.createObjectURL(file);
       video.src = fileURL;
-      video.play();
-      
-      // 選択UIを非表示にする場合は以下を有効化
-      // document.getElementById('file-input').style.display = 'none';
+      video.load();
+      playBtn.disabled = false;
+      playBtn.textContent = 'タップして再生';
+    });
+
+    playBtn.addEventListener('click', function() {
+      video.play().then(() => {
+        uiContainer.style.display = 'none'; // 再生開始後に操作UIを隠す
+      }).catch(err => {
+        alert('再生エラー: ' + err.message);
+      });
     });
   </script>
 </body>
