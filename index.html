@@ -1,102 +1,157 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>360 VR Player</title>
-  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-  <style>
-    body { margin: 0; overflow: hidden; background: #000; }
-
-    #ui-container {
-      position: absolute;
-      top: 20px;
-      left: 20px;
-      z-index: 999;
-      background: rgba(255, 255, 255, 0.9);
-      padding: 12px;
-      border-radius: 8px;
-      font-family: sans-serif;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    button {
-      padding: 10px 16px;
-      font-size: 14px;
-      font-weight: bold;
-      background: #007aff;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    button:disabled { background: #ccc; }
-
-    /* iOS Safari対策: display:none にすると動画がテクスチャに描画されない。
-       視覚的には見えないが、レイアウト上は存在する状態にする */
-    #video-src {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 1px;
-      height: 1px;
-      opacity: 0.01;
-      pointer-events: none;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>360 VR Player</title>
+<style>
+  html, body { margin:0; padding:0; overflow:hidden; background:#000; height:100%; }
+  #ui-container {
+    position:absolute; top:20px; left:20px; z-index:999;
+    background:rgba(255,255,255,0.9); padding:12px; border-radius:8px;
+    font-family:sans-serif; display:flex; flex-direction:column; gap:10px;
+  }
+  button {
+    padding:10px 16px; font-size:14px; font-weight:bold;
+    background:#007aff; color:#fff; border:none; border-radius:4px; cursor:pointer;
+  }
+  button:disabled { background:#ccc; }
+  canvas { display:block; }
+</style>
 </head>
 <body>
-  <div id="ui-container">
-    <input type="file" id="video-file" accept="video/mp4,video/*">
-    <button id="play-btn" disabled>再生開始</button>
-  </div>
 
-  <!-- ★ a-assets の外、body直下に配置(iOS Safari対策) -->
-  <video id="video-src" loop playsinline webkit-playsinline muted></video>
+<div id="ui-container">
+  <input type="file" id="video-file" accept="video/mp4,video/*">
+  <button id="play-btn" disabled>再生開始</button>
+</div>
 
-  <a-scene embedded vr-mode-ui="enabled: true">
-    <a-videosphere id="sphere" src="#video-src" rotation="0 -90 0"></a-videosphere>
-    <a-camera look-controls="magicWindowTrackingEnabled: true"></a-camera>
-  </a-scene>
+<!-- display:none にはしない。視覚的に見えないだけの状態にする -->
+<video id="video-src" playsinline webkit-playsinline loop muted
+  style="position:absolute; width:1px; height:1px; opacity:0.01; pointer-events:none;"></video>
 
-  <script>
-    const fileInput = document.getElementById('video-file');
-    const playBtn = document.getElementById('play-btn');
-    const video = document.getElementById('video-src');
-    const uiContainer = document.getElementById('ui-container');
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const fileInput = document.getElementById('video-file');
+const playBtn = document.getElementById('play-btn');
+const video = document.getElementById('video-src');
+const uiContainer = document.getElementById('ui-container');
 
-    fileInput.addEventListener('change', function(e) {
-      const file = e.target.files[0];
-      if (!file) return;
+let scene, camera, renderer;
+let lon = 0, lat = 0;
+let isPointerDown = false, pointerX = 0, pointerY = 0, lonStart = 0, latStart = 0;
+let deviceOrientationEnabled = false;
 
-      const fileURL = URL.createObjectURL(file);
-      video.src = fileURL;
-      video.load();
+function initScene() {
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1100);
 
-      playBtn.disabled = false;
-      playBtn.textContent = 'タップして再生';
-    });
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  document.body.appendChild(renderer.domElement);
 
-    playBtn.addEventListener('click', function() {
-      video.muted = false;
-      video.playsInline = true;
+  const geometry = new THREE.SphereGeometry(500, 60, 40);
+  geometry.scale(-1, 1, 1); // 球の内側からテクスチャを見せる
 
-      const startPlayback = () => {
-        video.play().then(() => {
-          uiContainer.style.display = 'none';
-        }).catch(err => {
-          alert('再生エラー: ' + err.message);
-        });
-      };
+  const videoTexture = new THREE.VideoTexture(video);
+  videoTexture.minFilter = THREE.LinearFilter;
+  videoTexture.magFilter = THREE.LinearFilter;
+  videoTexture.format = THREE.RGBFormat;
 
-      // 動画データがまだ読み込まれていない場合は loadeddata を待つ
-      if (video.readyState >= 2) {
-        startPlayback();
-      } else {
-        video.addEventListener('loadeddata', startPlayback, { once: true });
+  const material = new THREE.MeshBasicMaterial({ map: videoTexture });
+  const sphere = new THREE.Mesh(geometry, material);
+  scene.add(sphere);
+
+  window.addEventListener('resize', onResize);
+  renderer.domElement.addEventListener('pointerdown', onPointerDown);
+  renderer.domElement.addEventListener('pointermove', onPointerMove);
+  renderer.domElement.addEventListener('pointerup', onPointerUp);
+
+  animate();
+}
+
+function onResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function onPointerDown(e) {
+  if (deviceOrientationEnabled) return;
+  isPointerDown = true;
+  pointerX = e.clientX; pointerY = e.clientY;
+  lonStart = lon; latStart = lat;
+}
+function onPointerMove(e) {
+  if (!isPointerDown || deviceOrientationEnabled) return;
+  lon = (pointerX - e.clientX) * 0.1 + lonStart;
+  lat = (e.clientY - pointerY) * 0.1 + latStart;
+}
+function onPointerUp() { isPointerDown = false; }
+
+// iPhoneのジャイロで視点操作
+function onDeviceOrientation(e) {
+  if (e.alpha === null) return;
+  deviceOrientationEnabled = true;
+  const alpha = THREE.MathUtils.degToRad(e.alpha);
+  const beta = THREE.MathUtils.degToRad(e.beta);
+  const gamma = THREE.MathUtils.degToRad(e.gamma);
+  const euler = new THREE.Euler();
+  euler.set(beta, alpha, -gamma, 'YXZ');
+  camera.quaternion.setFromEuler(euler);
+  camera.quaternion.multiply(new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)));
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  if (!deviceOrientationEnabled) {
+    lat = Math.max(-85, Math.min(85, lat));
+    const phi = THREE.MathUtils.degToRad(90 - lat);
+    const theta = THREE.MathUtils.degToRad(lon);
+    camera.position.x = 0.1 * Math.sin(phi) * Math.cos(theta);
+    camera.position.y = 0.1 * Math.cos(phi);
+    camera.position.z = 0.1 * Math.sin(phi) * Math.sin(theta);
+    camera.lookAt(0, 0, 0);
+  }
+  renderer.render(scene, camera);
+}
+
+fileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  video.src = URL.createObjectURL(file);
+  video.load();
+  playBtn.disabled = false;
+  playBtn.textContent = 'タップして再生';
+});
+
+playBtn.addEventListener('click', async () => {
+  // iOS13+: ジャイロ利用にはユーザー操作内での許可リクエストが必須
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try {
+      const res = await DeviceOrientationEvent.requestPermission();
+      if (res === 'granted') {
+        window.addEventListener('deviceorientation', onDeviceOrientation);
       }
-    });
-  </script>
+    } catch (err) {
+      console.warn('orientation permission error', err);
+    }
+  } else {
+    window.addEventListener('deviceorientation', onDeviceOrientation);
+  }
+
+  video.muted = false;
+  const start = () => {
+    video.play().then(() => {
+      uiContainer.style.display = 'none';
+      if (!scene) initScene();
+    }).catch(err => alert('再生エラー: ' + err.message));
+  };
+  if (video.readyState >= 2) start();
+  else video.addEventListener('loadeddata', start, { once: true });
+});
+</script>
 </body>
 </html>
