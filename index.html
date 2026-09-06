@@ -16,6 +16,10 @@
     background:#007aff; color:#fff; border:none; border-radius:4px; cursor:pointer;
   }
   button:disabled { background:#ccc; }
+  #vr-toggle-btn {
+    position:absolute; bottom:20px; right:20px; z-index:999;
+    display:none;
+  }
   canvas { display:block; }
 </style>
 </head>
@@ -26,18 +30,23 @@
   <button id="play-btn" disabled>再生開始</button>
 </div>
 
+<button id="vr-toggle-btn">VR(2画面)切替</button>
+
 <!-- display:none にはしない。視覚的に見えないだけの状態にする -->
 <video id="video-src" playsinline webkit-playsinline loop muted
   style="position:absolute; width:1px; height:1px; opacity:0.01; pointer-events:none;"></video>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/effects/StereoEffect.js"></script>
 <script>
 const fileInput = document.getElementById('video-file');
 const playBtn = document.getElementById('play-btn');
+const vrToggleBtn = document.getElementById('vr-toggle-btn');
 const video = document.getElementById('video-src');
 const uiContainer = document.getElementById('ui-container');
 
-let scene, camera, renderer;
+let scene, camera, renderer, stereoEffect;
+let isStereoMode = false;
 let lon = 0, lat = 0;
 let isPointerDown = false, pointerX = 0, pointerY = 0, lonStart = 0, latStart = 0;
 let deviceOrientationEnabled = false;
@@ -50,6 +59,10 @@ function initScene() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(window.devicePixelRatio);
   document.body.appendChild(renderer.domElement);
+
+  stereoEffect = new THREE.StereoEffect(renderer);
+  stereoEffect.setSize(window.innerWidth, window.innerHeight);
+  stereoEffect.eyeSeparation = 0.008; // 眼幅(球体半径500に対して調整)
 
   const geometry = new THREE.SphereGeometry(500, 60, 40);
   geometry.scale(-1, 1, 1); // 球の内側からテクスチャを見せる
@@ -68,13 +81,36 @@ function initScene() {
   renderer.domElement.addEventListener('pointermove', onPointerMove);
   renderer.domElement.addEventListener('pointerup', onPointerUp);
 
+  vrToggleBtn.style.display = 'block';
+  vrToggleBtn.addEventListener('click', toggleStereo);
+
   animate();
+}
+
+function toggleStereo() {
+  isStereoMode = !isStereoMode;
+  vrToggleBtn.textContent = isStereoMode ? '通常表示に戻す' : 'VR(2画面)切替';
+
+  // 横向き推奨。可能なら画面を横向きに固定＆フルスクリーン化
+  if (isStereoMode) {
+    if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+    if (screen.orientation && screen.orientation.lock) {
+      screen.orientation.lock('landscape').catch(() => {});
+    }
+  } else {
+    if (document.fullscreenElement && document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    }
+  }
 }
 
 function onResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  stereoEffect.setSize(window.innerWidth, window.innerHeight);
 }
 
 function onPointerDown(e) {
@@ -114,7 +150,12 @@ function animate() {
     camera.position.z = 0.1 * Math.sin(phi) * Math.sin(theta);
     camera.lookAt(0, 0, 0);
   }
-  renderer.render(scene, camera);
+
+  if (isStereoMode) {
+    stereoEffect.render(scene, camera);
+  } else {
+    renderer.render(scene, camera);
+  }
 }
 
 fileInput.addEventListener('change', (e) => {
