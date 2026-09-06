@@ -41,7 +41,6 @@
   <button id="fov-plus">＋ 狭く</button>
 </div>
 
-<!-- display:none にはしない。視覚的に見えないだけの状態にする -->
 <video id="video-src" playsinline webkit-playsinline loop muted
   style="position:absolute; width:1px; height:1px; opacity:0.01; pointer-events:none;"></video>
 
@@ -63,9 +62,8 @@ let lon = 0, lat = 0;
 let isPointerDown = false, pointerX = 0, pointerY = 0, lonStart = 0, latStart = 0;
 let deviceOrientationEnabled = false;
 
-// 通常表示とVR表示でそれぞれ別のFOVを保持
 let normalFov = 75;
-let stereoFov = 95; // ★ カードボード等のレンズは広角前提。まずはここを調整
+let stereoFov = 95;
 
 function initScene() {
   scene = new THREE.Scene();
@@ -78,10 +76,11 @@ function initScene() {
 
   stereoEffect = new THREE.StereoEffect(renderer);
   stereoEffect.setSize(window.innerWidth, window.innerHeight);
-  stereoEffect.eyeSeparation = 0.008; // 眼幅(球体半径500に対する比率)
+  stereoEffect.eyeSeparation = 0.008;
 
-  const geometry = new THREE.SphereGeometry(500, 60, 40);
-  geometry.scale(-1, 1, 1); // 球の内側からテクスチャを見せる
+  // ★ 分割数を大幅アップ(60,40 → 128,128)。天頂/天底付近のカクつきを軽減
+  const geometry = new THREE.SphereGeometry(500, 128, 128);
+  geometry.scale(-1, 1, 1);
 
   const videoTexture = new THREE.VideoTexture(video);
   videoTexture.minFilter = THREE.LinearFilter;
@@ -119,7 +118,6 @@ function toggleStereo() {
   vrToggleBtn.textContent = isStereoMode ? '通常表示に戻す' : 'VR(2画面)切替';
   fovControls.style.display = isStereoMode ? 'flex' : 'none';
 
-  // ★ ステレオ(カードボード)表示時はFOVを広げる
   camera.fov = isStereoMode ? stereoFov : normalFov;
   camera.updateProjectionMatrix();
 
@@ -136,7 +134,6 @@ function toggleStereo() {
     }
   }
 
-  // フルスクリーン/画面回転の反映を待ってからリサイズを強制実行
   setTimeout(onResize, 300);
 }
 
@@ -160,7 +157,6 @@ function onPointerMove(e) {
 }
 function onPointerUp() { isPointerDown = false; }
 
-// iPhoneのジャイロで視点操作
 function onDeviceOrientation(e) {
   if (e.alpha === null) return;
   deviceOrientationEnabled = true;
@@ -202,7 +198,6 @@ fileInput.addEventListener('change', (e) => {
 });
 
 playBtn.addEventListener('click', async () => {
-  // iOS13+: ジャイロ利用にはユーザー操作内での許可リクエストが必須
   if (typeof DeviceOrientationEvent !== 'undefined' &&
       typeof DeviceOrientationEvent.requestPermission === 'function') {
     try {
