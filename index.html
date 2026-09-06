@@ -20,11 +20,6 @@
     position:absolute; bottom:20px; right:20px; z-index:999;
     display:none;
   }
-  #fov-controls {
-    position:absolute; bottom:20px; left:20px; z-index:999;
-    display:none; gap:8px;
-  }
-  #fov-controls button { padding:8px 12px; font-size:18px; }
   canvas { display:block; }
 </style>
 </head>
@@ -36,10 +31,6 @@
 </div>
 
 <button id="vr-toggle-btn">VR(2画面)切替</button>
-<div id="fov-controls">
-  <button id="fov-minus">－ 広く</button>
-  <button id="fov-plus">＋ 狭く</button>
-</div>
 
 <video id="video-src" playsinline webkit-playsinline loop muted
   style="position:absolute; width:1px; height:1px; opacity:0.01; pointer-events:none;"></video>
@@ -51,9 +42,6 @@
 const fileInput = document.getElementById('video-file');
 const playBtn = document.getElementById('play-btn');
 const vrToggleBtn = document.getElementById('vr-toggle-btn');
-const fovControls = document.getElementById('fov-controls');
-const fovMinusBtn = document.getElementById('fov-minus');
-const fovPlusBtn = document.getElementById('fov-plus');
 const video = document.getElementById('video-src');
 const uiContainer = document.getElementById('ui-container');
 
@@ -89,15 +77,14 @@ function initScene() {
   videoTexture.magFilter = THREE.LinearFilter;
   videoTexture.format = THREE.RGBFormat;
 
-const material = new THREE.MeshBasicMaterial({ map: videoTexture });
+  const material = new THREE.MeshBasicMaterial({ map: videoTexture });
   const sphere = new THREE.Mesh(geometry, material);
   
-  // ★ 動画の正面位置を合わせるためY軸を90度回転
-  sphere.rotation.y = Math.PI / 2; // 向きが変わらない場合は -Math.PI / 2 や Math.PI で調整してください
+  // 動画の正面位置を合わせるためY軸を90度回転
+  sphere.rotation.y = Math.PI / 2;
   
   scene.add(sphere);
 
-  // ★ three.js公式のDeviceOrientationControlsを使用
   deviceControls = new THREE.DeviceOrientationControls(camera);
 
   window.addEventListener('resize', onResize);
@@ -108,24 +95,12 @@ const material = new THREE.MeshBasicMaterial({ map: videoTexture });
   vrToggleBtn.style.display = 'block';
   vrToggleBtn.addEventListener('click', toggleStereo);
 
-  fovMinusBtn.addEventListener('click', () => adjustFov(-5));
-  fovPlusBtn.addEventListener('click', () => adjustFov(5));
-
   animate();
-}
-
-function adjustFov(delta) {
-  stereoFov = Math.max(50, Math.min(120, stereoFov + delta));
-  if (isStereoMode) {
-    camera.fov = stereoFov;
-    camera.updateProjectionMatrix();
-  }
 }
 
 function toggleStereo() {
   isStereoMode = !isStereoMode;
   vrToggleBtn.textContent = isStereoMode ? '通常表示に戻す' : 'VR(2画面)切替';
-  fovControls.style.display = isStereoMode ? 'flex' : 'none';
 
   camera.fov = isStereoMode ? stereoFov : normalFov;
   camera.updateProjectionMatrix();
@@ -170,7 +145,7 @@ function animate() {
   requestAnimationFrame(animate);
 
   if (deviceOrientationEnabled && deviceControls) {
-    deviceControls.update(); // ★ ジャイロによる視点更新(向き補正込み)
+    deviceControls.update();
   } else {
     lat = Math.max(-85, Math.min(85, lat));
     const phi = THREE.MathUtils.degToRad(90 - lat);
@@ -203,8 +178,6 @@ playBtn.addEventListener('click', async () => {
     video.play().then(() => {
       uiContainer.style.display = 'none';
       if (!scene) initScene();
-
-      // ★ iOS13+: シーン初期化後にジャイロ許可をリクエスト
       requestGyroPermission();
     }).catch(err => alert('再生エラー: ' + err.message));
   };
@@ -218,14 +191,13 @@ async function requestGyroPermission() {
     try {
       const res = await DeviceOrientationEvent.requestPermission();
       if (res === 'granted') {
-        deviceControls.connect(); // ライブラリ内部でイベント登録される
+        deviceControls.connect();
         deviceOrientationEnabled = true;
       }
     } catch (err) {
       console.warn('orientation permission error', err);
     }
   } else {
-    // Android等、許可リクエストが不要な環境
     deviceControls.connect();
     deviceOrientationEnabled = true;
   }
