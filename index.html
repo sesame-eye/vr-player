@@ -21,7 +21,7 @@
       gap: 10px;
     }
     button {
-      padding: 8px 16px;
+      padding: 10px 16px;
       font-size: 14px;
       font-weight: bold;
       background: #007aff;
@@ -42,9 +42,9 @@
 
   <a-scene embedded vr-mode-ui="enabled: true">
     <a-assets>
-      <video id="video-src" crossorigin="anonymous" loop playsinline webkit-playsinline></video>
+      <video id="video-src" crossorigin="anonymous" loop playsinline webkit-playsinline muted></video>
     </a-assets>
-    <a-videosphere src="#video-src" rotation="0 -90 0"></a-videosphere>
+    <a-videosphere id="sphere" src="#video-src" rotation="0 -90 0"></a-videosphere>
     <a-camera look-controls="magicWindowTrackingEnabled: true"></a-camera>
   </a-scene>
 
@@ -52,6 +52,7 @@
     const fileInput = document.getElementById('video-file');
     const playBtn = document.getElementById('play-btn');
     const video = document.getElementById('video-src');
+    const sphere = document.getElementById('sphere');
     const uiContainer = document.getElementById('ui-container');
 
     fileInput.addEventListener('change', function(e) {
@@ -66,8 +67,25 @@
     });
 
     playBtn.addEventListener('click', function() {
+      // ミュート解除して再生
+      video.muted = false;
       video.play().then(() => {
-        uiContainer.style.display = 'none'; // 再生開始後に操作UIを隠す
+        uiContainer.style.display = 'none';
+        
+        // iOS Safari向け: 毎フレーム強制的にテクスチャを更新させる処理
+        const scene = document.querySelector('a-scene');
+        scene.addEventListener('render-target-loaded', () => {}, {once: true});
+        
+        function updateTexture() {
+          if (sphere.components.material && sphere.components.material.material.map) {
+            sphere.components.material.material.map.needsUpdate = true;
+          }
+          if (!video.paused && !video.ended) {
+            requestAnimationFrame(updateTexture);
+          }
+        }
+        updateTexture();
+
       }).catch(err => {
         alert('再生エラー: ' + err.message);
       });
