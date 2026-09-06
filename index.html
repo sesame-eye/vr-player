@@ -46,6 +46,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/effects/StereoEffect.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/DeviceOrientationControls.js"></script>
 <script>
 const fileInput = document.getElementById('video-file');
 const playBtn = document.getElementById('play-btn');
@@ -56,25 +57,16 @@ const fovPlusBtn = document.getElementById('fov-plus');
 const video = document.getElementById('video-src');
 const uiContainer = document.getElementById('ui-container');
 
-let scene, camera, renderer, stereoEffect;
+let scene, camera, renderer, stereoEffect, deviceControls;
 let isStereoMode = false;
+let deviceOrientationEnabled = false;
+
+// タッチドラッグ用(ジャイロ許可が得られない場合のフォールバック)
 let lon = 0, lat = 0;
 let isPointerDown = false, pointerX = 0, pointerY = 0, lonStart = 0, latStart = 0;
-let deviceOrientationEnabled = false;
 
 let normalFov = 75;
 let stereoFov = 95;
-
-// ★ 画面の向き対応
-let screenOrientation = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
-window.addEventListener('orientationchange', () => {
-  screenOrientation = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
-});
-
-const zee = new THREE.Vector3(0, 0, 1);
-const q0 = new THREE.Quaternion();
-const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
-const euler = new THREE.Euler();
 
 function initScene() {
   scene = new THREE.Scene();
@@ -100,6 +92,9 @@ function initScene() {
   const material = new THREE.MeshBasicMaterial({ map: videoTexture });
   const sphere = new THREE.Mesh(geometry, material);
   scene.add(sphere);
+
+  // ★ three.js公式のDeviceOrientationControlsを使用
+  deviceControls = new THREE.DeviceOrientationControls(camera);
 
   window.addEventListener('resize', onResize);
   renderer.domElement.addEventListener('pointerdown', onPointerDown);
@@ -167,25 +162,12 @@ function onPointerMove(e) {
 }
 function onPointerUp() { isPointerDown = false; }
 
-// ★ 画面の向きを補正したジャイロ計算
-function onDeviceOrientation(e) {
-  if (e.alpha === null) return;
-  deviceOrientationEnabled = true;
-
-  const alpha = THREE.MathUtils.degToRad(e.alpha);
-  const beta  = THREE.MathUtils.degToRad(e.beta);
-  const gamma = THREE.MathUtils.degToRad(e.gamma);
-  const orient = THREE.MathUtils.degToRad(screenOrientation);
-
-  euler.set(beta, alpha, -gamma, 'YXZ');
-  camera.quaternion.setFromEuler(euler);
-  camera.quaternion.multiply(q1);
-  camera.quaternion.multiply(q0.setFromAxisAngle(zee, -orient));
-}
-
 function animate() {
   requestAnimationFrame(animate);
-  if (!deviceOrientationEnabled) {
+
+  if (deviceOrientationEnabled && deviceControls) {
+    deviceControls.update(); // ★ ジャイロによる視点更新(向き補正込み)
+  } else {
     lat = Math.max(-85, Math.min(85, lat));
     const phi = THREE.MathUtils.degToRad(90 - lat);
     const theta = THREE.MathUtils.degToRad(lon);
@@ -212,30 +194,38 @@ fileInput.addEventListener('change', (e) => {
 });
 
 playBtn.addEventListener('click', async () => {
-  if (typeof DeviceOrientationEvent !== 'undefined' &&
-      typeof DeviceOrientationEvent.requestPermission === 'function') {
-    try {
-      const res = await DeviceOrientationEvent.requestPermission();
-      if (res === 'granted') {
-        window.addEventListener('deviceorientation', onDeviceOrientation);
-      }
-    } catch (err) {
-      console.warn('orientation permission error', err);
-    }
-  } else {
-    window.addEventListener('deviceorientation', onDeviceOrientation);
-  }
-
   video.muted = false;
   const start = () => {
     video.play().then(() => {
       uiContainer.style.display = 'none';
       if (!scene) initScene();
+
+      // ★ iOS13+: シーン初期化後にジャイロ許可をリクエスト
+      requestGyroPermission();
     }).catch(err => alert('再生エラー: ' + err.message));
   };
   if (video.readyState >= 2) start();
   else video.addEventListener('loadeddata', start, { once: true });
 });
+
+async function requestGyroPermission() {
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try {
+      const res = await DeviceOrientationEvent.requestPermission();
+      if (res === 'granted') {
+        deviceControls.connect(); // ライブラリ内部でイベント登録される
+        deviceOrientationEnabled = true;
+      }
+    } catch (err) {
+      console.warn('orientation permission error', err);
+    }
+  } else {
+    // Android等、許可リクエストが不要な環境
+    deviceControls.connect();
+    deviceOrientationEnabled = true;
+  }
+}
 </script>
 </body>
 </html>
