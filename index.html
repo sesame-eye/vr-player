@@ -89,8 +89,12 @@ function initScene() {
   videoTexture.magFilter = THREE.LinearFilter;
   videoTexture.format = THREE.RGBFormat;
 
-  const material = new THREE.MeshBasicMaterial({ map: videoTexture });
+const material = new THREE.MeshBasicMaterial({ map: videoTexture });
   const sphere = new THREE.Mesh(geometry, material);
+  
+  // ★ 動画の正面位置を合わせるためY軸を90度回転
+  sphere.rotation.y = Math.PI / 2; // 向きが変わらない場合は -Math.PI / 2 や Math.PI で調整してください
+  
   scene.add(sphere);
 
   // ★ three.js公式のDeviceOrientationControlsを使用
