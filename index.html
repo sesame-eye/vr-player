@@ -65,6 +65,17 @@ let deviceOrientationEnabled = false;
 let normalFov = 75;
 let stereoFov = 95;
 
+// ★ 画面の向き対応
+let screenOrientation = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
+window.addEventListener('orientationchange', () => {
+  screenOrientation = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
+});
+
+const zee = new THREE.Vector3(0, 0, 1);
+const q0 = new THREE.Quaternion();
+const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+const euler = new THREE.Euler();
+
 function initScene() {
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(normalFov, window.innerWidth / window.innerHeight, 0.1, 1100);
@@ -78,7 +89,6 @@ function initScene() {
   stereoEffect.setSize(window.innerWidth, window.innerHeight);
   stereoEffect.eyeSeparation = 0.008;
 
-  // ★ 分割数を大幅アップ(60,40 → 128,128)。天頂/天底付近のカクつきを軽減
   const geometry = new THREE.SphereGeometry(500, 128, 128);
   geometry.scale(-1, 1, 1);
 
@@ -157,16 +167,20 @@ function onPointerMove(e) {
 }
 function onPointerUp() { isPointerDown = false; }
 
+// ★ 画面の向きを補正したジャイロ計算
 function onDeviceOrientation(e) {
   if (e.alpha === null) return;
   deviceOrientationEnabled = true;
+
   const alpha = THREE.MathUtils.degToRad(e.alpha);
-  const beta = THREE.MathUtils.degToRad(e.beta);
+  const beta  = THREE.MathUtils.degToRad(e.beta);
   const gamma = THREE.MathUtils.degToRad(e.gamma);
-  const euler = new THREE.Euler();
+  const orient = THREE.MathUtils.degToRad(screenOrientation);
+
   euler.set(beta, alpha, -gamma, 'YXZ');
   camera.quaternion.setFromEuler(euler);
-  camera.quaternion.multiply(new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)));
+  camera.quaternion.multiply(q1);
+  camera.quaternion.multiply(q0.setFromAxisAngle(zee, -orient));
 }
 
 function animate() {
